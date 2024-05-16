@@ -11,8 +11,6 @@ fn read_compact_size(transaction_bytes: &mut &[u8]) -> u64 {
     let mut compact_size = [0; 1];
     transaction_bytes.read(&mut compact_size).unwrap();
 
-    // using a ref prevents making a copy, i would think
-    // and deref trait lets it be used for pattern matching
     let first_byte = compact_size[0];
     match first_byte {
         (1..=252) => compact_size[0] as u64,
