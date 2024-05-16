@@ -19,20 +19,17 @@ fn read_compact_size(transaction_bytes: &mut &[u8]) -> u64 {
         253 => {
             let mut buffer = [0; 2];
             transaction_bytes.read(&mut buffer).unwrap();
-            let extra_bytes = u16::from_le_bytes(buffer);
-            first_byte as u64 + extra_bytes as u64
+            u16::from_le_bytes(buffer) as u64
         }
         254 => {
             let mut buffer = [0; 4];
             transaction_bytes.read(&mut buffer).unwrap();
-            let extra_bytes = u32::from_le_bytes(buffer);
-            first_byte as u64 + extra_bytes as u64
+            u32::from_le_bytes(buffer) as u64
         }
         255 => {
             let mut buffer = [0; 8];
             transaction_bytes.read(&mut buffer).unwrap();
-            let extra_bytes = u64::from_le_bytes(buffer);
-            first_byte as u64 + extra_bytes
+            u64::from_le_bytes(buffer) as u64
         }
         _ => panic!("invalid compact size"),
     }
@@ -47,4 +44,44 @@ fn main() {
 
     println!("Version: {}", version);
     println!("Input Length: {}", input_length);
+}
+
+#[cfg(test)]
+mod unit_tests {
+    use super::read_compact_size;
+
+    #[test]
+    fn test_read_compact_size() {
+        let mut bytes = [1_u8].as_slice();
+        let length = read_compact_size(&mut bytes);
+        assert_eq!(length, 1_u64);
+
+        let mut bytes = [253_u8, 0, 1].as_slice();
+        let length = read_compact_size(&mut bytes);
+        assert_eq!(length, 256_u64);
+
+        let mut bytes = [254_u8, 0, 0, 0, 1].as_slice();
+        let length = read_compact_size(&mut bytes);
+        assert_eq!(length, 256_u64.pow(3));
+
+        let mut bytes = [255_u8, 0, 0, 0, 0, 0, 0, 0, 1].as_slice();
+        let length = read_compact_size(&mut bytes);
+        assert_eq!(length, 256_u64.pow(7));
+
+        // https://mempool.space/tx/52539a56b1eb890504b775171923430f0355eb836a57134ba598170a2f8980c1
+        // fd is 253
+        // transaction has 20,000 empty inputs
+        let hex = "fd204e";
+        let decoded = hex::decode(transaction_hex).unwrap();
+        let mut bytes = decoded.as_slice();
+        let length = read_compact_size(&mut bytes);
+        let expected_length = 20_000_u64;
+        assert_eq!(length, expected_length);
+
+        let result = std::panic::catch_unwind(|| {
+            let mut bytes = [0_u8].as_slice();
+            read_compact_size(&mut bytes);
+        });
+        assert!(result.is_err());
+    }
 }
