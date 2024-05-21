@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use std::io::Read;
 
 #[derive(Debug, Serialize)]
@@ -9,17 +9,28 @@ struct Input {
     sequence: u32,
 }
 
+#[derive(Debug)]
 struct Amount(u64);
 
-impl Amount {
-    pub fn to_btc(&self) -> f64 {
+trait BitcoinValue {
+    fn to_btc(&self) -> f64;
+}
+
+impl BitcoinValue for Amount {
+    fn to_btc(&self) -> f64 {
         self.0 as f64 / 100_000_000.0
     }
 }
 
+fn as_btc<T: BitcoinValue, S: Serializer>(t: &T, s: S) -> Result<S::Ok, S::Error> {
+    let btc = t.to_btc();
+    s.serialize_f64(btc)
+}
+
 #[derive(Debug, Serialize)]
 struct Output {
-    amount: f64,
+    #[serde(serialize_with = "as_btc")]
+    amount: Amount,
     script_pubkey: String,
 }
 
@@ -112,7 +123,7 @@ fn main() {
 
     let mut outputs = vec![];
     for _ in 0..output_length {
-        let amount = read_amount(&mut bytes_slice).to_btc();
+        let amount = read_amount(&mut bytes_slice);
         let script_pubkey = read_script(&mut bytes_slice);
 
         outputs.push(Output {
