@@ -1,5 +1,13 @@
 use std::io::Read;
 
+#[derive(Debug)]
+struct Input {
+    txid: [u8; 32],
+    output_index: u32,
+    script: Vec<u8>,
+    sequence: u32,
+}
+
 fn read_u32(transaction_bytes: &mut &[u8]) -> u32 {
     let mut buffer = [0; 4];
     transaction_bytes.read(&mut buffer).unwrap();
@@ -54,15 +62,25 @@ fn main() {
     let version = read_u32(&mut bytes_slice);
     let input_length = read_compact_size(&mut bytes_slice);
 
+    let mut inputs = vec![];
+
     for _ in 0..input_length {
         let txid = read_txid(&mut bytes_slice);
         let output_index = read_u32(&mut bytes_slice);
         let script = read_script(&mut bytes_slice);
         let sequence = read_u32(&mut bytes_slice);
+
+        inputs.push(Input {
+            txid,
+            output_index,
+            script,
+            sequence,
+        });
     }
 
     println!("Version: {}", version);
     println!("Input Length: {}", input_length);
+    println!("Inputs: {:?}", inputs);
 }
 
 #[cfg(test)]
