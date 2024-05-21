@@ -1,45 +1,8 @@
-use serde::{Serialize, Serializer};
+mod transaction;
+
 use std::io::Read;
 
-#[derive(Debug, Serialize)]
-struct Input {
-    txid: String,
-    output_index: u32,
-    script: String,
-    sequence: u32,
-}
-
-#[derive(Debug)]
-struct Amount(u64);
-
-trait BitcoinValue {
-    fn to_btc(&self) -> f64;
-}
-
-impl BitcoinValue for Amount {
-    fn to_btc(&self) -> f64 {
-        self.0 as f64 / 100_000_000.0
-    }
-}
-
-fn as_btc<T: BitcoinValue, S: Serializer>(t: &T, s: S) -> Result<S::Ok, S::Error> {
-    let btc = t.to_btc();
-    s.serialize_f64(btc)
-}
-
-#[derive(Debug, Serialize)]
-struct Output {
-    #[serde(serialize_with = "as_btc")]
-    amount: Amount,
-    script_pubkey: String,
-}
-
-#[derive(Debug, Serialize)]
-struct Transaction {
-    version: u32,
-    inputs: Vec<Input>,
-    outputs: Vec<Output>,
-}
+use transaction::{Amount, Input, Output, Transaction};
 
 fn read_u32(transaction_bytes: &mut &[u8]) -> u32 {
     let mut buffer = [0; 4];
@@ -52,7 +15,7 @@ fn read_amount(transaction_bytes: &mut &[u8]) -> Amount {
     let mut buffer = [0; 8];
     transaction_bytes.read(&mut buffer).unwrap();
 
-    Amount(u64::from_le_bytes(buffer))
+    Amount::from_sat(u64::from_le_bytes(buffer))
 }
 
 fn read_compact_size(transaction_bytes: &mut &[u8]) -> u64 {
