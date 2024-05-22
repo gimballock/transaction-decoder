@@ -2,9 +2,9 @@ use serde::{Serialize, Serializer};
 
 #[derive(Debug, Serialize)]
 pub struct Input {
-    pub txid: Txid,
-    pub output_index: u32,
-    pub script: String,
+    pub previous_txid: Txid,
+    pub previous_vout: u32,
+    pub script_sig: String,
     pub sequence: u32,
 }
 
@@ -44,11 +44,11 @@ pub struct Output {
 
 #[derive(Debug, Serialize)]
 pub struct Transaction {
+    pub transaction_id: Txid,
     pub version: u32,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
-    pub lock_time: u32,
-    pub transaction_id: Txid,
+    pub locktime: u32,
 }
 
 impl Txid {

@@ -119,9 +119,9 @@ pub fn run(raw_transaction_hex: String) -> Result<String, Box<dyn Error>> {
         let sequence = read_u32(&mut bytes_slice)?;
 
         inputs.push(Input {
-            txid,
-            output_index,
-            script,
+            previous_txid: txid,
+            previous_vout: output_index,
+            script_sig: script,
             sequence,
         });
     }
@@ -148,7 +148,7 @@ pub fn run(raw_transaction_hex: String) -> Result<String, Box<dyn Error>> {
         version,
         inputs,
         outputs,
-        lock_time,
+        locktime: lock_time,
         transaction_id,
     };
 
