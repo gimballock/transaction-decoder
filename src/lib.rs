@@ -4,11 +4,29 @@ use std::error::Error;
 use std::io::Read;
 use std::io::{Error as IOError, ErrorKind};
 
+use clap::{arg, value_parser, Command};
 use sha2::{Digest, Sha256};
 
 use transaction::{Amount, Input, Output, Transaction};
 
 use crate::transaction::Txid;
+
+pub fn get_arg() -> String {
+    let matches = Command::new("Bitcoin Transaction Decoder")
+        .version("1.0")
+        .about("Decodes a raw transaction")
+        .arg(
+            arg!([RAW_TRANSACTION])
+                .value_parser(value_parser!(String))
+                .required(true),
+        )
+        .get_matches();
+
+    matches
+        .get_one::<String>("RAW_TRANSACTION")
+        .cloned()
+        .expect("raw transaction is required")
+}
 
 fn read_u32(transaction_bytes: &mut &[u8]) -> Result<u32, IOError> {
     let mut buffer = [0; 4];
