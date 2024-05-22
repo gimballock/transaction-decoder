@@ -2,7 +2,7 @@ use serde::{Serialize, Serializer};
 
 #[derive(Debug, Serialize)]
 pub struct Input {
-    pub txid: String,
+    pub txid: Txid,
     pub output_index: u32,
     pub script: String,
     pub sequence: u32,
@@ -10,6 +10,9 @@ pub struct Input {
 
 #[derive(Debug)]
 pub struct Amount(u64);
+
+#[derive(Debug)]
+pub struct Txid([u8; 32]);
 
 pub trait BitcoinValue {
     fn to_btc(&self) -> f64;
@@ -44,4 +47,20 @@ pub struct Transaction {
     pub version: u32,
     pub inputs: Vec<Input>,
     pub outputs: Vec<Output>,
+    pub lock_time: u32,
+    pub transaction_id: Txid,
+}
+
+impl Txid {
+    pub fn from_bytes(bytes: [u8; 32]) -> Txid {
+        Txid(bytes)
+    }
+}
+
+impl Serialize for Txid {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        let mut bytes = self.0.clone();
+        bytes.reverse();
+        s.serialize_str(&hex::encode(bytes))
+    }
 }
