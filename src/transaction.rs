@@ -8,12 +8,18 @@ use std::io::{Read, Write};
 #[derive(fmt::Debug)]
 pub enum Error {
     Io(std::io::Error),
+    ParseFailed(&'static str),
+    UnsupportedSegwitFlag(u8),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Io(e) => write!(f, "IO Error: {}", e),
+        match *self {
+            Self::Io(ref e) => write!(f, "IO Error: {}", e),
+            Self::ParseFailed(s) => write!(f, "parse failed: {}", s),
+            Self::UnsupportedSegwitFlag(swflag) => {
+                write!(f, "unsupported segwit version: {}", swflag)
+            }
         }
     }
 }
@@ -40,43 +46,43 @@ impl Transaction {
 }
 
 pub trait Encodable {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error>;
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error>;
 }
 
 impl Encodable for Version {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let len = self.0.consensus_encode(writer)?;
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
+        let len = self.0.consensus_encode(w)?;
         Ok(len)
     }
 }
 
 impl Encodable for u8 {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        let len = writer.write([*self].as_slice()).map_err(Error::Io)?;
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
+        let len = w.write([*self].as_slice()).map_err(Error::Io)?;
         Ok(len)
     }
 }
 
 impl Encodable for u16 {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let bytes = self.to_le_bytes();
-        let len = writer.write(bytes.as_slice()).map_err(Error::Io)?;
+        let len = w.write(bytes.as_slice()).map_err(Error::Io)?;
         Ok(len)
     }
 }
 
 impl Encodable for u32 {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let bytes = self.to_le_bytes();
-        let len = writer.write(bytes.as_slice()).map_err(Error::Io)?;
+        let len = w.write(bytes.as_slice()).map_err(Error::Io)?;
         Ok(len)
     }
 }
 
 impl Encodable for u64 {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let bytes = self.to_le_bytes();
-        let len = writer.write(bytes.as_slice()).map_err(Error::Io)?;
+        let len = w.write(bytes.as_slice()).map_err(Error::Io)?;
         Ok(len)
     }
 }
@@ -85,87 +91,96 @@ impl Encodable for Vec<TxIn> {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
         let mut len = 0;
         len += CompactSize(self.len() as u64).consensus_encode(writer)?;
-        for input in self.iter() {
-            len += input.consensus_encode(writer)?;
+        for tx in self.iter() {
+            len += tx.consensus_encode(writer)?;
         }
         Ok(len)
     }
 }
 
 impl Encodable for TxIn {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let mut len = 0;
-        len += self.previous_txid.consensus_encode(writer)?;
-        len += self.previous_vout.consensus_encode(writer)?;
-        len += self.script_sig.consensus_encode(writer)?;
-        len += self.sequence.consensus_encode(writer)?;
+        len += self.previous_txid.consensus_encode(w)?;
+        len += self.previous_vout.consensus_encode(w)?;
+        len += self.script_sig.consensus_encode(w)?;
+        len += self.sequence.consensus_encode(w)?;
         Ok(len)
     }
 }
 
+// impl Encodable for [u8; 32] {
+//     fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
+//         let len = w.write(self.as_slice()).map_err(Error::Io)?;
+//         Ok(len)
+//     }
+// }
+
 impl Encodable for Txid {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let buff = self.0.as_slice();
-        Ok(writer.write(buff).map_err(Error::Io)?)
+        Ok(w.write(buff).map_err(Error::Io)?)
+        // Ok(self.0.consensus_encode(w)?)
     }
 }
 
 impl Encodable for String {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let b = hex::decode(self).expect("should be a valid hex string");
-        let compact_size_len = CompactSize(b.len() as u64).consensus_encode(writer)?;
-        let b_len = writer.write(&b).map_err(Error::Io)?;
+        let compact_size_len = CompactSize(b.len() as u64).consensus_encode(w)?;
+        let b_len = w.write(&b).map_err(Error::Io)?;
         Ok(compact_size_len + b_len)
     }
 }
 
 impl Encodable for Vec<TxOut> {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let mut len = 0;
-        len += CompactSize(self.len() as u64).consensus_encode(writer)?;
+        len += CompactSize(self.len() as u64).consensus_encode(w)?;
         for input in self.iter() {
-            len += input.consensus_encode(writer)?;
+            len += input.consensus_encode(w)?;
         }
         Ok(len)
     }
 }
 
 impl Encodable for TxOut {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let mut len = 0;
-        len += self.amount.consensus_encode(writer)?;
-        len += self.script_pubkey.consensus_encode(writer)?;
+        len += self.amount.consensus_encode(w)?;
+        len += self.script_pubkey.consensus_encode(w)?;
         Ok(len)
     }
 }
 
 impl Encodable for Amount {
     fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
-        Ok(self.0.consensus_encode(writer)?)
+        let len = self.0.consensus_encode(writer)?;
+        Ok(len)
     }
 }
 
 impl Encodable for CompactSize {
-    fn consensus_encode<W: Write>(&self, writer: &mut W) -> Result<usize, Error> {
+    fn consensus_encode<W: Write>(&self, w: &mut W) -> Result<usize, Error> {
         let val = self.0;
         match val {
             0..=0xFC => {
-                (val as u8).consensus_encode(writer)?;
+                (val as u8).consensus_encode(w)?;
                 Ok(1)
             }
             0xFD..=0xFFFF => {
-                writer.write([0xFD].as_slice()).map_err(Error::Io)?;
-                (val as u16).consensus_encode(writer)?;
+                w.write([0xFD].as_slice()).map_err(Error::Io)?;
+                (val as u16).consensus_encode(w)?;
                 Ok(3)
             }
             0x10000..=0xFFFFFFFF => {
-                writer.write([0xFE].as_slice()).map_err(Error::Io)?;
-                (val as u32).consensus_encode(writer)?;
+                w.write([0xFE].as_slice()).map_err(Error::Io)?;
+                (val as u32).consensus_encode(w)?;
                 Ok(5)
             }
             _ => {
-                writer.write([0xFF].as_slice()).map_err(Error::Io)?;
-                val.consensus_encode(writer)?;
+                w.write([0xFF].as_slice()).map_err(Error::Io)?;
+                val.consensus_encode(w)?;
                 Ok(9)
             }
         }
@@ -188,13 +203,41 @@ impl Serialize for Transaction {
 }
 
 impl Decodable for Transaction {
-    fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        Ok(Transaction {
-            version: Version::consensus_decode(reader)?,
-            inputs: Vec::<TxIn>::consensus_decode(reader)?,
-            outputs: Vec::<TxOut>::consensus_decode(reader)?,
-            lock_time: u32::consensus_decode(reader)?,
-        })
+    fn consensus_decode<R: Read>(r: &mut R) -> Result<Self, Error> {
+        let version = Version::consensus_decode(r)?;
+        let inputs = Vec::<TxIn>::consensus_decode(r)?;
+        if inputs.is_empty() {
+            let segwit_flag = u8::consensus_decode(r)?;
+            match segwit_flag {
+                1 => {
+                    let mut inputs = Vec::<TxIn>::consensus_decode(r)?;
+                    let outputs = Vec::<TxOut>::consensus_decode(r)?;
+                    for txin in inputs.iter_mut() {
+                        txin.witness = Witness::consensus_decode(r)?;
+                    }
+                    if !inputs.is_empty() && inputs.iter().all(|input| input.witness.is_empty()) {
+                        Err(Error::ParseFailed(
+                            "witness flag set but no witnesses present",
+                        ))
+                    } else {
+                        Ok(Transaction {
+                            version,
+                            inputs,
+                            outputs,
+                            lock_time: u32::consensus_decode(r)?,
+                        })
+                    }
+                }
+                x => Err(Error::UnsupportedSegwitFlag(x)),
+            }
+        } else {
+            Ok(Transaction {
+                version,
+                inputs,
+                outputs: Vec::<TxOut>::consensus_decode(r)?,
+                lock_time: u32::consensus_decode(r)?,
+            })
+        }
     }
 }
 
@@ -234,12 +277,64 @@ impl Decodable for Txid {
 #[derive(Debug, Serialize)]
 pub struct Version(pub u32);
 
-#[derive(fmt::Debug, Serialize)]
+#[derive(fmt::Debug)]
 pub struct TxIn {
     pub previous_txid: Txid,
     pub previous_vout: u32,
     pub script_sig: String,
     pub sequence: u32,
+    pub witness: Witness,
+}
+
+impl Serialize for TxIn {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut txin = s.serialize_struct("TxIn", 4)?;
+        txin.serialize_field("txid", &self.previous_txid)?;
+        txin.serialize_field("vout", &self.previous_vout)?;
+
+        if self.witness.is_empty() {
+            txin.serialize_field("scriptSig", &self.script_sig)?;
+        } else {
+            txin.serialize_field("txinwitness", &self.witness)?;
+        }
+
+        txin.serialize_field("sequence", &self.sequence)?;
+        txin.end()
+    }
+}
+
+#[derive(Debug)]
+pub struct Witness {
+    content: Vec<Vec<u8>>,
+}
+
+impl Witness {
+    pub fn new() -> Self {
+        Witness { content: vec![] }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.content.is_empty()
+    }
+}
+
+impl Serialize for Witness {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        use serde::ser::SerializeSeq;
+
+        let mut seq = s.serialize_seq(Some(self.content.len()))?;
+        for elem in self.content.iter() {
+            let hex_elem = &hex::encode(&elem);
+            seq.serialize_element(hex_elem)?;
+        }
+        seq.end()
+    }
 }
 
 impl Decodable for Vec<TxIn> {
@@ -260,6 +355,23 @@ impl Decodable for TxIn {
             previous_vout: u32::consensus_decode(r)?,
             script_sig: String::consensus_decode(r)?,
             sequence: u32::consensus_decode(r)?,
+            witness: Witness::new(),
+        })
+    }
+}
+
+impl Decodable for Witness {
+    fn consensus_decode<R: Read>(r: &mut R) -> Result<Self, Error> {
+        let mut witness_items = vec![];
+        let count = u8::consensus_decode(r)?;
+        for _ in 0..count {
+            let len = CompactSize::consensus_decode(r)?.0;
+            let mut buffer = vec![0; len as usize];
+            r.read_exact(&mut buffer).map_err(Error::Io)?;
+            witness_items.push(buffer);
+        }
+        Ok(Witness {
+            content: witness_items,
         })
     }
 }
@@ -275,7 +387,6 @@ impl Decodable for String {
 
 #[derive(fmt::Debug, Serialize)]
 pub struct TxOut {
-    #[serde(serialize_with = "as_btc")]
     pub amount: Amount,
     pub script_pubkey: String,
 }
@@ -347,10 +458,10 @@ impl Decodable for Version {
 
 impl Decodable for CompactSize {
     fn consensus_decode<R: Read>(reader: &mut R) -> Result<Self, Error> {
-        let mut n = u8::consensus_decode(reader)?;
+        let n = u8::consensus_decode(reader)?;
 
         match n {
-            (1..=252) => Ok(CompactSize(n as u64)),
+            (0..=252) => Ok(CompactSize(n as u64)),
             253 => {
                 let x = u16::consensus_decode(reader)?;
                 Ok(CompactSize(x as u64))
@@ -374,6 +485,12 @@ impl Decodable for CompactSize {
 #[derive(fmt::Debug)]
 pub struct Amount(u64);
 
+impl Amount {
+    pub fn from_sat(sats: u64) -> Amount {
+        Amount(sats)
+    }
+}
+
 pub trait BitcoinValue {
     fn to_btc(&self) -> f64;
 }
@@ -384,13 +501,11 @@ impl BitcoinValue for Amount {
     }
 }
 
-impl Amount {
-    pub fn from_sat(sats: u64) -> Amount {
-        Amount(sats)
+impl Serialize for Amount {
+    fn serialize<S>(&self, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        s.serialize_f64(self.to_btc())
     }
-}
-
-fn as_btc<T: BitcoinValue, S: Serializer>(t: &T, s: S) -> Result<S::Ok, S::Error> {
-    let btc = t.to_btc();
-    s.serialize_f64(btc)
 }
